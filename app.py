@@ -7,17 +7,52 @@ from dotenv import load_dotenv
 import logging
 # from src.google_oauth import GoogleOAuth
 import gspread
-
+from langchain.messages import HumanMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 
 from src.job_scraper import JobScraper
-
+from src.cover_latter_generator import generate_cover_letter, extract_experience_from_cv, extract_name_and_contact_from_cv, save_to_files
+from src.nlp_processing import extract_skills_from_description
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load environment variables
-load_dotenv()
+load_dotenv(r"C:\Users\nagar\Desktop\my_project\job_automate\JobPilot\.env")
+
+def improve_cover_letter_with_gemini(raw_text: str) -> str:
+    """
+    Uses Gemini 2.5 Flash to improve the cover letter.
+    Loads API key from environment variable GOOGLE_API_KEY.
+    """
+
+    google_api_key = os.getenv("GOOGLE_API_KEY")
+    if not google_api_key:
+        raise ValueError("GOOGLE_API_KEY is not set in environment variables.")
+
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        temperature=0.2,
+        google_api_key=google_api_key
+    )
+
+    prompt = f"""
+    Improve the following cover letter:
+    - Fix grammar, clarity, and formatting
+    - Improve flow and professionalism
+    - Remove repetition
+    - Keep all factual details
+    - Return ONLY the improved cover letter text.
+
+    --- RAW COVER LETTER ---
+    {raw_text}
+    --- END ---
+    """
+
+    response = llm.invoke([HumanMessage(content=prompt)])
+    return response.text.strip()
+
 
 
 # --- Custom CSS for Styling ---
@@ -137,8 +172,8 @@ def main():
         render_dashboard()
     elif page == "🔍 Job Search":
         render_job_search()
-    # elif page == "📝 Cover Letter":
-    #     render_cover_letter_generator()
+    elif page == "📝 Cover Letter":
+        render_cover_letter_generator()
     # elif page == "✉️ Email Application":
     #     render_email_application()
     # elif page == "📊 Application Tracker":
@@ -280,7 +315,9 @@ def render_cover_letter_generator():
                             selected_job['description'],
                             temp_cv_path
                         )
-                        st.session_state.cover_letter = cover_letter
+                        
+                        clean_letter = improve_cover_letter_with_gemini(cover_letter)
+                        st.session_state.cover_letter = clean_letter
                         
                         # Extract name from CV for saving files
                         name, _ = extract_name_and_contact_from_cv(temp_cv_path)
@@ -289,7 +326,7 @@ def render_cover_letter_generator():
                         st.subheader("Your Custom Cover Letter")
                         st.text_area(
                             "Cover Letter Content",
-                            cover_letter,
+                            clean_letter,
                             height=400,
                             label_visibility="collapsed"
                         )

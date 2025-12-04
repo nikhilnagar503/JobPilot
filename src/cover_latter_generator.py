@@ -11,12 +11,14 @@ from email import encoders
 from dotenv import load_dotenv
 import json
 from langchain_groq import ChatGroq
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 
-load_dotenv()
+
+
 
 # Load the .env file
 load_dotenv(dotenv_path=r"C:\Users\nagar\Desktop\my_project\job_automate\JobPilot\gmail.env")
+load_dotenv()
 
 llm = ChatGroq(model="llama3-8b-8192", groq_api_key=os.getenv("GROQ_API_KEY"))
 
@@ -61,41 +63,26 @@ def extract_experience_from_cv(cv_file_path):
             text = ""
             for page in reader.pages:
                 text += page.extract_text()
-        experience = extract_experience_with_langchain(text)
+        experience = extract_experience_from_text(text)
 
     elif cv_file_path.lower().endswith('.docx'):
         doc = Document(cv_file_path)
         text = "\n".join([para.text for para in doc.paragraphs])
-        experience = extract_experience_with_langchain(text)
+        experience = extract_experience_from_text(text)
 
     return experience
 
-def extract_experience_with_langchain(cv_text):
-    prompt = f"""
-    Extract ONLY the EXPERIENCE section from this CV text.
-    Return short summary of work experience, roles, or responsibilities.
+def extract_experience_from_text(text):
+    experience_section = ""
+    experience_keywords = ['experience', 'work', 'role', 'responsibilities']
 
-    If no experience is found, return an empty string.
+    for line in text.split('\n'):
+        for keyword in experience_keywords:
+            if keyword in line.lower():
+                experience_section += line.strip() + "\n"
+                break
 
-    Return ONLY this format:
-
-    Experience: <experience_text_here>
-
-    CV Text:
-    {cv_text}
-    """
-
-    response = llm.predict(prompt)
-
-    # default empty
-    experience = ""
-
-    # parse line
-    for line in response.split("\n"):
-        if line.lower().startswith("experience"):
-            experience = line.split(":", 1)[1].strip()
-
-    return experience
+    return experience_section
 
 
 def extract_name_and_contact_from_cv(cv_file_path):
@@ -108,44 +95,21 @@ def extract_name_and_contact_from_cv(cv_file_path):
             text = ""
             for page in reader.pages:
                 text += page.extract_text()
-        name, contact_info = extract_name_and_contact_with_langchain(text)
+        name, contact_info = extract_name_and_contact_from_text(text)
 
     elif cv_file_path.lower().endswith('.docx'):
         doc = Document(cv_file_path)
         text = "\n".join([para.text for para in doc.paragraphs])
-        name, contact_info = extract_name_and_contact_with_langchain(text)
+        name, contact_info = extract_name_and_contact_from_text(text)
 
     return name, contact_info
 
-def extract_name_and_contact_with_langchain(cv_text):
-    prompt = f"""
-    Extract ONLY the NAME and CONTACT details (Email and Phone) from the CV text.
-
-    Return ONLY this format:
-
-    Name: <name>
-    Contact: <email_or_phone>
-
-    If any detail is missing, leave it blank.
-
-    CV Text:
-    {cv_text}
-    """
-
-    response = llm.predict(prompt)
-
-    # DEFAULT EMPTY VALUES
-    name = ""
-    contact = ""
-
-    # Parse line by line
-    for line in response.split("\n"):
-        if line.lower().startswith("name"):
-            name = line.split(":", 1)[1].strip()
-        if line.lower().startswith("contact"):
-            contact = line.split(":", 1)[1].strip()
-
-    return name, contact
+def extract_name_and_contact_from_text(text):
+    lines = text.split("\n")
+    name = lines[0] if len(lines) > 0 else "Your Full Name"
+    contact_info = lines[1] if len(lines) > 1 else "Your Contact Information"
+    
+    return name, contact_info
 
 # Save the CV and Cover Letter to Files
 def save_to_files(cv_file, cover_letter, name):
