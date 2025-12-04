@@ -12,11 +12,95 @@ import gspread
 
 from src.job_scraper import JobScraper
 
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load environment variables
 load_dotenv()
+
+
+# --- Custom CSS for Styling ---
+def load_css():
+    st.markdown("""
+    <style>
+        .main {
+            background-color: #f8f9fa;
+        }
+        .stButton>button {
+            background-color: #4a90e2;
+            color: white;
+            border-radius: 8px;
+            padding: 8px 16px;
+            border: none;
+            font-weight: 500;
+        }
+        .stButton>button:hover {
+            background-color: #357abd;
+            color: white;
+        }
+        .stTextInput>div>div>input, .stTextArea>div>div>textarea {
+            border-radius: 8px;
+            padding: 8px;
+        }
+        .stSelectbox>div>div>div {
+            border-radius: 8px;
+            padding: 4px;
+        }
+        .stDateInput>div>div>input {
+            border-radius: 8px;
+            padding: 8px;
+        }
+        .stNumberInput>div>div>input {
+            border-radius: 8px;
+            padding: 8px;
+        }
+        .header {
+            color: #2c3e50;
+            font-weight: 700;
+        }
+        .sidebar .sidebar-content {
+            background-color: #2c3e50;
+            color: white;
+        }
+        .sidebar .sidebar-content .stRadio>div {
+            color: white;
+        }
+        .success-box {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+        }
+        .warning-box {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+        }
+        .error-box {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+        }
+        .job-card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .job-card h3 {
+            color: #2c3e50;
+            margin-top: 0;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
 
 
 # --- Streamlit UI Components ---
@@ -33,7 +117,7 @@ def main():
     st.sidebar.markdown("---")
     page = st.sidebar.radio(
         "Navigation",
-        ["🏠 Dashboard", "🔍 Job Search"],
+        ["🏠 Dashboard", "🔍 Job Search", "📝 Cover Letter", "✉️ Email Application", "📊 Application Tracker","⚙️ Settings"],
         label_visibility="collapsed"
     )
     
@@ -136,6 +220,91 @@ def render_job_search():
             except Exception as e:
                 st.error(f"Error searching for jobs: {str(e)}")
                 
+
+def render_cover_letter_generator():
+    st.title("Cover Letter Generator")
+    st.markdown("Create a personalized cover letter for your job application.")
+    
+    if 'job_results' in st.session_state and not st.session_state.job_results.empty:
+        job_list = st.session_state.job_results[['job_title', 'company']].to_dict('records')
+        job_options = {f"{job['job_title']} at {job['company']}": idx for idx, job in enumerate(job_list)}
+        selected_job_key = st.selectbox(
+            "Select a job to apply for",
+            options=list(job_options.keys()),
+            help="Select a job from your previous search results"
+        )
+        selected_job_idx = job_options[selected_job_key]
+        selected_job = st.session_state.job_results.iloc[selected_job_idx]
+        st.session_state.selected_job = selected_job
+        
+        with st.expander("📄 Job Details", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"**Job Title:** {selected_job['job_title']}")
+                st.markdown(f"**Company:** {selected_job['company']}")
+                st.markdown(f"**Location:** {selected_job['location']}")
+            with col2:
+                st.markdown(f"**Salary Range:** £{selected_job['salary_min']} - £{selected_job['salary_max']}")
+                st.markdown(f"**Posted:** {selected_job['created']}")
+                st.markdown(f"[Apply Here]({selected_job['apply_link']})")
+            
+            st.markdown("**Description:**")
+            st.write(selected_job['description'][:500] + "...")
+    else:
+        st.warning("⚠️ No job results available. Please search for jobs first.")
+        selected_job = None
+    
+    if selected_job is not None:
+        st.subheader("Upload Your CV")
+        cv_file = st.file_uploader(
+            "Choose your CV file (PDF or DOCX)",
+            type=['pdf', 'docx'],
+            help="Upload your CV to personalize the cover letter"
+        )
+        
+        if cv_file:
+            # Save the uploaded file temporarily
+            temp_cv_path = f"temp_cv.{cv_file.name.split('.')[-1]}"
+            with open(temp_cv_path, "wb") as f:
+                f.write(cv_file.getbuffer())
+            
+            st.session_state.cv_path = temp_cv_path
+            st.success("✅ CV uploaded successfully!")
+            
+            if st.button("Generate Cover Letter", key="generate_cover_letter"):
+                with st.spinner("✨ Generating your personalized cover letter..."):
+                    try:
+                        cover_letter = generate_cover_letter(
+                            selected_job['job_title'],
+                            selected_job['company'],
+                            selected_job['description'],
+                            temp_cv_path
+                        )
+                        st.session_state.cover_letter = cover_letter
+                        
+                        # Extract name from CV for saving files
+                        name, _ = extract_name_and_contact_from_cv(temp_cv_path)
+                        st.session_state.applicant_name = name
+                        
+                        st.subheader("Your Custom Cover Letter")
+                        st.text_area(
+                            "Cover Letter Content",
+                            cover_letter,
+                            height=400,
+                            label_visibility="collapsed"
+                        )
+                        
+                        # Save to files
+                        if 'cover_letter_path' not in st.session_state:
+                            cover_letter_path, _ = save_to_files(temp_cv_path, cover_letter, name)
+                            st.session_state.cover_letter_path = cover_letter_path
+                            st.session_state.cv_saved_path = temp_cv_path
+                            st.success("📄 Cover letter saved successfully!")
+                    except Exception as e:
+                        st.error(f"Error generating cover letter: {str(e)}")
+                        
+                        
+                        
 
 if __name__ == "__main__":
     main()
