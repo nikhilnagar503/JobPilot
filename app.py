@@ -14,6 +14,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from src.job_scraper import JobScraper
 from src.cover_latter_generator import generate_cover_letter, extract_experience_from_cv, extract_name_and_contact_from_cv, save_to_files
 from src.nlp_processing import extract_skills_from_description
+from src.email_sender import send_job_application_email
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -174,8 +175,8 @@ def main():
         render_job_search()
     elif page == "📝 Cover Letter":
         render_cover_letter_generator()
-    # elif page == "✉️ Email Application":
-    #     render_email_application()
+    elif page == "✉️ Email Application":
+        render_email_application()
     # elif page == "📊 Application Tracker":
     #     render_application_tracker()
     #     # render_application_tracker(json_credentials_file, spreadsheet_id)
@@ -341,8 +342,84 @@ def render_cover_letter_generator():
                         st.error(f"Error generating cover letter: {str(e)}")
                         
                         
-                        
+                  
+def render_email_application():
+    st.title("Email Application")
+    st.markdown("Send your job application with cover letter and CV attached.")
+    
+    if 'cover_letter' not in st.session_state or 'cv_saved_path' not in st.session_state:
+        st.warning("""
+        ⚠️ Please complete these steps first:
+        1. Search for jobs on the Job Search page
+        2. Generate a cover letter on the Cover Letter page
+        """)
+        return
+    
+    with st.expander("✉️ Email Details", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            recipient_email = st.text_input("Recipient Email", help="The hiring manager's email address")
+        with col2:
+            email_subject = st.text_input(
+                "Subject",
+                f"Application for {st.session_state.selected_job['job_title']} Position",
+                help="Email subject line"
+            )
+    
+    email_body = st.text_area(
+        "Email Body",
+        value=f"""Dear Hiring Manager,
 
+I hope this email finds you well. I am excited to apply for the {st.session_state.selected_job['job_title']} position at {st.session_state.selected_job['company']}. 
+With my experience and skills, I am confident in my ability to contribute effectively to your team.
+
+Please find my CV and cover letter attached for your review. I would appreciate the opportunity 
+to discuss how my background aligns with the role. I look forward to your response.
+
+Best regards,
+{st.session_state.get('applicant_name', '')}
+""",
+        height=200,
+        key="email_body"
+    )
+    
+    if st.button("Send Application", key="send_application"):
+        with st.spinner("📤 Sending your application..."):
+            try:
+                success = send_job_application_email(
+                    to_email=recipient_email,
+                    subject=email_subject,
+                    body=st.session_state.email_body,
+                    cv_path=st.session_state.cv_saved_path,
+                    cover_letter_path=st.session_state.cover_letter_path,
+                    # or, if you want the function to generate the cover letter:
+                    job_title=st.session_state.selected_job['job_title'],
+                    company=st.session_state.selected_job['company'],
+                    applicant_name=st.session_state.get('applicant_name')
+                )
+                
+                if success:
+                    st.success("🎉 Application sent successfully!")
+                    job_data = {  
+                        "job_title": st.session_state.selected_job['job_title'],
+                        "company": st.session_state.selected_job['company'],
+                        "location": st.session_state.selected_job.get('location', ''),
+                        "created": datetime.now().strftime("%Y-%m-%d"),
+                        "salary_min": st.session_state.selected_job.get('salary_min', ''),
+                        "salary_max": st.session_state.selected_job.get('salary_max', ''),
+                        "apply_link": st.session_state.selected_job.get('apply_link', ''),
+                        "status": "Applied",
+                        "application_date": datetime.now().strftime("%Y-%m-%d"),
+                        "interview_date": "",
+                        "notes": "Application sent via AI Job Assistant"
+                    }
+                    # update tracker code here...
+                else:
+                    st.error("Failed to send application. Check logs for details.")
+            except Exception as e:
+                st.error(f"Error sending application: {str(e)}")
+                                  
+                        
 if __name__ == "__main__":
     main()
     
